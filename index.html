@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earth Data Sonification Lab | تجربة صوت الأرض التفاعلية</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js for Web Audio Synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Chart.js for Responsive Data Visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&family=Fira+Code:wght@400;600&display=swap');
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #050811;
+            color: #e2e8f0;
+        }
+
+        .font-mono-code {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Glowing accents */
+        .glow-cyan { box-shadow: 0 0 25px rgba(6, 182, 212, 0.25); }
+        .glow-rose { box-shadow: 0 0 25px rgba(244, 63, 94, 0.25); }
+        .glow-emerald { box-shadow: 0 0 25px rgba(16, 185, 129, 0.25); }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0b0f19; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+
+        /* Custom range sliders */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: #1e293b;
+            border-radius: 999px;
+            height: 6px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #06b6d4;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.9);
+            transition: all 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+            background: #38bdf8;
+        }
+
+        /* Ambient glowing background grid */
+        .bg-grid-pattern {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+
+        /* Dynamic Earth pulse animation */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.9); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+            100% { transform: scale(0.9); opacity: 0.8; }
+        }
+        .earth-pulse { animation: pulse-ring 3.5s infinite ease-in-out; }
+    </style>
+</head>
+<body class="min-h-screen bg-grid-pattern flex flex-col justify-between selection:bg-cyan-500 selection:text-slate-950">
+
+    <!-- Audio Start Trigger Overlay -->
+    <div id="start-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4">
+        <div class="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 text-center shadow-2xl relative overflow-hidden">
+            <div class="absolute -top-20 -left-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-20 -right-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-3xl glow-cyan">
+                <i class="fa-solid fa-earth-americas animate-spin" style="animation-duration: 15s;"></i>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl font-extrabold text-white mb-3">مشروع تحويل بيانات الأرض إلى صوت</h1>
+            <p class="text-slate-400 text-sm leading-relaxed mb-8">
+                هذا المستودع التفاعلي يحول سجل التغيرات المناخية والحرارية للأرض (1880 - 2024) إلى نغمات موسيقية وإيقاعات لحظية مباشرة عبر المتصفح باستخدام <span class="text-cyan-400 font-mono-code">Tone.js</span>.
+            </p>
+
+            <button id="btn-init-audio" class="w-full py-4 px-8 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-lg shadow-lg hover:shadow-cyan-500/20 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-3">
+                <i class="fa-solid fa-play text-sm"></i>
+                تشغيل محرك الصوت واستكشاف التجربة
+            </button>
+        </div>
+    </div>
+
+    <!-- Header / Navbar -->
+    <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <i class="fa-solid fa-wave-square"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-slate-100 text-base flex items-center gap-2">
+                        Earth Data Sonification Lab
+                        <span class="text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded-full font-mono">v1.0</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">تحويل المؤشرات المناخية والبيئية إلى مقطوعة صوتية تفاعلية</p>
+                </div>
+            </div>
+
+            <!-- GitHub Deploy Modal Button & GitHub Link -->
+            <div class="flex items-center gap-3">
+                <button id="btn-github-instructions" class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl flex items-center gap-2 transition">
+                    <i class="fa-solid fa-code-branch text-cyan-400"></i>
+                    كيف ترفعه على GitHub Pages؟
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 my-auto">
+
+        <!-- Left Column: Synthesizer Visualizer & Theme Options (5 Cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+            
+            <!-- Visualizer Card -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[320px] shadow-xl">
+                <!-- Glowing Orb Background -->
+                <div id="visual-pulse" class="absolute w-56 h-56 rounded-full bg-cyan-500/10 border border-cyan-500/20 earth-pulse pointer-events-none"></div>
+
+                <div class="relative z-10 text-center">
+                    <div id="earth-globe" class="w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-slate-950 via-cyan-950 to-blue-900 border border-cyan-500/40 flex items-center justify-center shadow-2xl transition-all duration-500">
+                        <i id="earth-icon" class="fa-solid fa-globe text-6xl text-cyan-400 transition-colors duration-500"></i>
+                    </div>
+                    
+                    <div class="mt-5 space-y-1">
+                        <div class="text-xs text-slate-400">النغمة الموسيقية الحالية</div>
+                        <div id="pitch-val" class="font-mono-code text-xl font-bold text-cyan-400">A3 (220 Hz)</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Visualizer Waves -->
+                <canvas id="audio-visualizer" class="absolute bottom-0 left-0 w-full h-28 pointer-events-none opacity-60"></canvas>
+            </div>
+
+            <!-- Controls Panel -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+                <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-3 flex items-center justify-between">
+                    <span><i class="fa-solid fa-sliders text-cyan-400 ml-2"></i> لوحة التحكم في المحرك الصوتي</span>
+                    <span id="audio-status-badge" class="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full font-mono">متوقف</span>
+                </h3>
+
+                <!-- Primary Playback Controls -->
+                <div class="grid grid-cols-3 gap-3">
+                    <button id="btn-play" class="py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-cyan-500/20">
+                        <i class="fa-solid fa-play text-xs"></i> تشغيل
+                    </button>
+                    <button id="btn-pause" class="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-pause text-xs"></i> إيقاف
+                    </button>
+                    <button id="btn-reset" class="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-rotate-right text-xs"></i> إعادة
+                    </button>
+                </div>
+
+                <!-- Instrument Selector -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-slate-400 flex items-center justify-between">
+                        <span>نوع الآلة الموسيقية (Synthesizer Preset):</span>
+                    </label>
+                    <select id="synth-theme" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-500 transition">
+                        <option value="ambient">محيطي هادئ (Ambient Sine Wave)</option>
+                        <option value="piano">بيانو ورنين جرس (Glass Piano & Chimes)</option>
+                        <option value="scifi">خيال علمي رقمي (Sawtooth Synth Drone)</option>
+                    </select>
+                </div>
+
+                <!-- Tempo Speed Slider -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">سرعة عرض السنوات (Tempo):</span>
+                        <span id="speed-val" class="text-cyan-400 font-mono-code font-bold">1.0x</span>
+                    </div>
+                    <input id="speed-slider" type="range" min="0.2" max="3" step="0.1" value="1" class="w-full">
+                </div>
+
+                <!-- Volume Control -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">مستوى الصوت الرئيسي:</span>
+                        <span id="volume-val" class="text-cyan-400 font-mono-code font-bold">80%</span>
+                    </div>
+                    <input id="volume-slider" type="range" min="0" max="1" step="0.05" value="0.8" class="w-full">
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Interactive Data Timeline & Chart (7 Cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+            
+            <!-- Live Data Stats Dashboard Header -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <span class="block text-[11px] text-slate-400 font-semibold mb-1">السنة الحالية</span>
+                    <span id="stat-year" class="font-mono-code text-2xl font-bold text-cyan-400">1880</span>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <span class="block text-[11px] text-slate-400 font-semibold mb-1">انحراف الحرارة</span>
+                    <span id="stat-temp" class="font-mono-code text-2xl font-bold text-emerald-400">-0.16 °C</span>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
+                    <span class="block text-[11px] text-slate-400 font-semibold mb-1">تركيز غاز CO2</span>
+                    <span id="stat-co2" class="font-mono-code text-2xl font-bold text-amber-400">291 ppm</span>
+                </div>
+            </div>
+
+            <!-- Main Interactive Chart Card -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between flex-grow shadow-xl min-h-[380px]">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <div>
+                        <h2 class="font-bold text-slate-100 flex items-center gap-2 text-base">
+                            <i class="fa-solid fa-chart-area text-cyan-400"></i>
+                            تغيرات حرارة الأرض والتأثير الصوتي (1880 - 2024)
+                        </h2>
+                        <p class="text-xs text-slate-400">الارتفاع الملاحظ في الخط الأحمر يعكس ارتفاع درجة الحرارة وبالتالي ارتفاع حدة الصوت</p>
+                    </div>
+                </div>
+
+                <!-- Chart Canvas Container -->
+                <div class="relative w-full h-64 flex-grow">
+                    <canvas id="climateChart"></canvas>
+                </div>
+
+                <!-- Timeline Scrubber Slider -->
+                <div class="mt-5 pt-4 border-t border-slate-800 space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">الانتقال السريع في خط الزمن:</span>
+                        <span id="timeline-year-display" class="text-cyan-400 font-bold font-mono-code">1880</span>
+                    </div>
+                    <input id="timeline-slider" type="range" min="0" max="144" value="0" class="w-full">
+                </div>
+            </div>
+
+            <!-- Documentation & Sonic Mapping Explanation -->
+            <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 text-xs text-slate-400 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <div class="text-slate-200 font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-music text-cyan-400"></i> حدة النغمة (Pitch)
+                    </div>
+                    <p>ترتبط بدرجة حرارة السطح. الحرارة المنخفضة تعطي نغمات منخفضة (Bass) بينما الحرارة المرتفعة ترفع النغمة للأعلى.</p>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-slate-200 font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-drum text-amber-400"></i> إيقاع الكربون (Beats)
+                    </div>
+                    <p>تزايد انبعاثات ثاني أكسيد الكربون (CO2) يضيف ضربات إيقاعية عميقة تزداد حدتها وسرعتها مع مرور السنوات.</p>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-slate-200 font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-palette text-emerald-400"></i> التجاوب البصري
+                    </div>
+                    <p>تتغير ألوان المخطط والهالة المركزية بحسب الحالة المناخية (أزرق للمعتدل، وأحمر للارتفاع القياسي).</p>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Modal Instructions for GitHub Pages -->
+    <div id="github-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 hidden">
+        <div class="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl relative text-right">
+            <button id="btn-close-github-modal" class="absolute top-6 left-6 text-slate-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <h2 class="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                <i class="fa-brands fa-github text-cyan-400"></i>
+                خطوات نشر هذا المشروع على GitHub Pages مجاناً
+            </h2>
+            <p class="text-slate-400 text-xs mb-6">اتبع هذه الخطوات البسيطة لجعل هذا التطبيق التفاعلي يعمل كـ موقع ويب مباشر على مستودع GitHub الخاص بك:</p>
+
+            <div class="space-y-4 text-xs text-slate-300">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                    <span class="font-bold text-cyan-400 block mb-1">1. إنشاء ملف index.html</span>
+                    قم بإنشاء مستودع جديد (New Repository) على GitHub باسم <code class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded font-mono-code">earth-sonification</code> ورَفْع هذا الملف داخل المستودع واحفظه باسم <code class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded font-mono-code">index.html</code>.
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                    <span class="font-bold text-cyan-400 block mb-1">2. التوجه إلى الإعدادات (Settings)</span>
+                    من داخل مستودعك على GitHub، اضغط على تبويب <strong class="text-white">Settings</strong> في الأعلى.
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                    <span class="font-bold text-cyan-400 block mb-1">3. تفعيل GitHub Pages</span>
+                    من القائمة الجانبية اختر <strong class="text-white">Pages</strong>، وفي قسم <strong class="text-white">Build and deployment</strong> اختر الفرع <code class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded font-mono-code">main</code> ثم اضغط <strong class="text-white">Save</strong>.
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                    <span class="font-bold text-cyan-400 block mb-1">4. التجربة الحية</span>
+                    خلال دقيقة واحدة سيمنحك GitHub رابطاً مباشراً لمشروعك (مثل: <code class="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded font-mono-code">https://username.github.io/earth-sonification/</code>) يتيح لأي شخص الاستماع لتجربتك التفاعلية!
+                </div>
+            </div>
+
+            <button id="btn-close-github-modal-bottom" class="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition">
+                إغلاق النافذة
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/60 py-4 text-center text-xs text-slate-500">
+        Earth Data Sonification Repository Demo | المصمم ليعمل مباشرة كصفحة مستقلة على GitHub Pages
+    </footer>
+
+    <!-- Main JavaScript Logic -->
+    <script>
+        // 1. Generate Climate Dataset (1880 to 2024)
+        const climateData = [];
+        const startYear = 1880;
+        const totalYears = 145;
+
+        for (let i = 0; i < totalYears; i++) {
+            const year = startYear + i;
+            let temp;
+            if (i < 60) {
+                temp = -0.3 + (Math.sin(i / 5) * 0.1) + (i * 0.002);
+            } else if (i < 100) {
+                temp = -0.1 + (Math.sin(i / 4) * 0.12) + ((i - 60) * 0.008);
+            } else {
+                temp = 0.2 + ((i - 100) * 0.035) + (Math.random() * 0.04);
+            }
+            temp = parseFloat(temp.toFixed(2));
+            const co2 = Math.round(290 + Math.pow(i / totalYears, 2.2) * 132);
+
+            climateData.push({ year, temp, co2 });
+        }
+
+        // 2. Application State
+        let currentIndex = 0;
+        let isPlaying = false;
+        let playbackInterval = null;
+        let playbackSpeed = 1.0;
+        let currentTheme = 'ambient';
+
+        // 3. Audio Engine Setup using Tone.js
+        let synth, bassSynth, volumeNode, waveform;
+
+        function initAudioEngine() {
+            volumeNode = new Tone.Volume(-6).toDestination();
+
+            // Main Polyphonic Synth for temperature mapped pitches
+            synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.08, decay: 0.2, sustain: 0.4, release: 1.0 }
+            }).connect(volumeNode);
+
+            // Sub Bass Synth for CO2 pulsation
+            bassSynth = new Tone.MembraneSynth({
+                pitchDecay: 0.04,
+                octaves: 3,
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.01, decay: 0.3, sustain: 0.01, release: 0.3 }
+            }).connect(volumeNode);
+
+            // Waveform Analyzer for visualizer
+            waveform = new Tone.Waveform(64);
+            Tone.Destination.connect(waveform);
+        }
+
+        function applySynthTheme(theme) {
+            currentTheme = theme;
+            if (!synth) return;
+
+            if (theme === 'ambient') {
+                synth.set({
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 1.2 }
+                });
+            } else if (theme === 'piano') {
+                synth.set({
+                    oscillator: { type: 'triangle' },
+                    envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.5 }
+                });
+            } else if (theme === 'scifi') {
+                synth.set({
+                    oscillator: { type: 'sawtooth' },
+                    envelope: { attack: 0.15, decay: 0.4, sustain: 0.6, release: 1.2 }
+                });
+            }
+        }
+
+        // Musical scale mapping
+        const musicalScale = ["C3", "D3", "E3", "G3", "A3", "C4", "D4", "E4", "G4", "A4", "C5", "D5", "E5"];
+
+        function getPitchForTemp(temp) {
+            const minTemp = -0.5;
+            const maxTemp = 1.3;
+            const normalized = Math.max(0, Math.min(1, (temp - minTemp) / (maxTemp - minTemp)));
+            const index = Math.floor(normalized * (musicalScale.length - 1));
+            return musicalScale[index];
+        }
+
+        function triggerAudioStep(dataPoint) {
+            if (!Tone.context || Tone.context.state !== 'running') return;
+
+            const note = getPitchForTemp(dataPoint.temp);
+            synth.triggerAttackRelease(note, "8n");
+
+            // CO2 Bass Beat Trigger for higher concentrations
+            if (dataPoint.co2 > 330 && dataPoint.year % 2 === 0) {
+                const bassNote = dataPoint.co2 > 380 ? "C2" : "C1";
+                bassSynth.triggerAttackRelease(bassNote, "8n");
+            }
+
+            document.getElementById('pitch-val').innerText = `${note}`;
+        }
+
+        // 4. Chart.js Data Visualization
+        let chart;
+        function initChart() {
+            const ctx = document.getElementById('climateChart').getContext('2d');
+            const labels = climateData.map(d => d.year);
+            const temps = climateData.map(d => d.temp);
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'انحراف درجة الحرارة (°C)',
+                        data: temps,
+                        borderColor: '#06b6d4',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.25,
+                        fill: {
+                            target: 'origin',
+                            above: 'rgba(244, 63, 94, 0.2)',
+                            below: 'rgba(6, 182, 212, 0.2)'
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#64748b', maxTicksLimit: 10 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#64748b' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function updateChartHighlight(index) {
+            if (!chart) return;
+            const pointRadii = new Array(climateData.length).fill(0);
+            pointRadii[index] = 6;
+
+            const pointColors = new Array(climateData.length).fill('#06b6d4');
+            const currentTemp = climateData[index].temp;
+            pointColors[index] = currentTemp > 0.4 ? '#f43f5e' : (currentTemp > 0 ? '#fbbf24' : '#06b6d4');
+
+            chart.data.datasets[0].pointRadius = pointRadii;
+            chart.data.datasets[0].pointBackgroundColor = pointColors;
+            chart.update();
+        }
+
+        // 5. Canvas Oscilloscope Visualizer
+        const visCanvas = document.getElementById('audio-visualizer');
+        const visCtx = visCanvas.getContext('2d');
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            if (!waveform) return;
+
+            const width = visCanvas.width = visCanvas.parentElement.clientWidth;
+            const height = visCanvas.height = visCanvas.parentElement.clientHeight;
+
+            const values = waveform.getValue();
+            visCtx.clearRect(0, 0, width, height);
+            visCtx.beginPath();
+            visCtx.lineWidth = 2;
+            visCtx.strokeStyle = '#06b6d4';
+
+            const sliceWidth = width / values.length;
+            let x = 0;
+
+            for (let i = 0; i < values.length; i++) {
+                const v = values[i];
+                const y = (v + 1) / 2 * height;
+                if (i === 0) visCtx.moveTo(x, y);
+                else visCtx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            visCtx.stroke();
+        }
+
+        // 6. UI Sync Logic
+        function updateUI(index) {
+            const item = climateData[index];
+            document.getElementById('stat-year').innerText = item.year;
+            document.getElementById('stat-temp').innerText = (item.temp > 0 ? `+${item.temp}` : `${item.temp}`) + ' °C';
+            document.getElementById('stat-co2').innerText = item.co2 + ' ppm';
+
+            document.getElementById('timeline-year-display').innerText = item.year;
+            document.getElementById('timeline-slider').value = index;
+
+            const earthGlobe = document.getElementById('earth-globe');
+            const earthIcon = document.getElementById('earth-icon');
+            const pulseBg = document.getElementById('visual-pulse');
+
+            if (item.temp > 0.5) {
+                earthGlobe.className = "w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-slate-950 via-rose-950 to-red-900 border border-rose-500/50 flex items-center justify-center shadow-2xl glow-rose transition-all duration-500";
+                earthIcon.className = "fa-solid fa-globe text-6xl text-rose-400 transition-colors duration-500";
+                pulseBg.className = "absolute w-56 h-56 rounded-full bg-rose-500/10 border border-rose-500/20 earth-pulse pointer-events-none";
+            } else if (item.temp > 0) {
+                earthGlobe.className = "w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-slate-950 via-amber-950 to-yellow-900 border border-amber-500/50 flex items-center justify-center shadow-2xl transition-all duration-500";
+                earthIcon.className = "fa-solid fa-globe text-6xl text-amber-400 transition-colors duration-500";
+                pulseBg.className = "absolute w-56 h-56 rounded-full bg-amber-500/10 border border-amber-500/20 earth-pulse pointer-events-none";
+            } else {
+                earthGlobe.className = "w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-slate-950 via-cyan-950 to-blue-900 border border-cyan-500/40 flex items-center justify-center shadow-2xl glow-cyan transition-all duration-500";
+                earthIcon.className = "fa-solid fa-globe text-6xl text-cyan-400 transition-colors duration-500";
+                pulseBg.className = "absolute w-56 h-56 rounded-full bg-cyan-500/10 border border-cyan-500/20 earth-pulse pointer-events-none";
+            }
+
+            updateChartHighlight(index);
+        }
+
+        function stepNext() {
+            if (currentIndex >= climateData.length - 1) {
+                pausePlayback();
+                return;
+            }
+            currentIndex++;
+            updateUI(currentIndex);
+            triggerAudioStep(climateData[currentIndex]);
+        }
+
+        function startPlayback() {
+            if (isPlaying) return;
+            isPlaying = true;
+
+            const intervalMs = 250 / playbackSpeed;
+            playbackInterval = setInterval(stepNext, intervalMs);
+
+            document.getElementById('audio-status-badge').innerText = 'شغّال الآن';
+            document.getElementById('audio-status-badge').className = 'text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2.5 py-1 rounded-full font-mono';
+        }
+
+        function pausePlayback() {
+            isPlaying = false;
+            if (playbackInterval) clearInterval(playbackInterval);
+
+            document.getElementById('audio-status-badge').innerText = 'متوقف';
+            document.getElementById('audio-status-badge').className = 'text-[10px] bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full font-mono';
+        }
+
+        function resetPlayback() {
+            pausePlayback();
+            currentIndex = 0;
+            updateUI(0);
+        }
+
+        // 7. Event Listeners Initialization
+        document.getElementById('btn-init-audio').addEventListener('click', async () => {
+            await Tone.start();
+            initAudioEngine();
+            initChart();
+            drawVisualizer();
+            updateUI(0);
+
+            document.getElementById('start-overlay').classList.add('hidden');
+            startPlayback();
+        });
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            if (Tone.context.state !== 'running') Tone.start();
+            startPlayback();
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => pausePlayback());
+        document.getElementById('btn-reset').addEventListener('click', () => resetPlayback());
+
+        document.getElementById('synth-theme').addEventListener('change', (e) => applySynthTheme(e.target.value));
+
+        document.getElementById('speed-slider').addEventListener('input', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+            document.getElementById('speed-val').innerText = `${playbackSpeed.toFixed(1)}x`;
+            if (isPlaying) {
+                pausePlayback();
+                startPlayback();
+            }
+        });
+
+        document.getElementById('volume-slider').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('volume-val').innerText = `${Math.round(val * 100)}%`;
+            if (volumeNode) {
+                volumeNode.volume.value = val === 0 ? -Infinity : Tone.gainToDb(val);
+            }
+        });
+
+        document.getElementById('timeline-slider').addEventListener('input', (e) => {
+            currentIndex = parseInt(e.target.value);
+            updateUI(currentIndex);
+            if (isPlaying) {
+                triggerAudioStep(climateData[currentIndex]);
+            }
+        });
+
+        // Modal GitHub Controls
+        const githubModal = document.getElementById('github-modal');
+        document.getElementById('btn-github-instructions').addEventListener('click', () => githubModal.classList.remove('hidden'));
+        document.getElementById('btn-close-github-modal').addEventListener('click', () => githubModal.classList.add('hidden'));
+        document.getElementById('btn-close-github-modal-bottom').addEventListener('click', () => githubModal.classList.add('hidden'));
+
+    </script>
+</body>
+</html>
